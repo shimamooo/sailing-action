@@ -74,6 +74,9 @@ jobs:
             git push
           else
             echo "No change -- still $SPOTS spots."
-            echo "Forcing failure to trigger email notification."
+          fi
+
+          if [ "$SPOTS" != "12" ]; then
+            echo "Spots is $SPOTS (not 12) -- failing to trigger email notification."
             exit 1
           fi
