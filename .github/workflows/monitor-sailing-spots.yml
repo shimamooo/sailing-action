@@ -63,23 +63,11 @@ jobs:
             fi
 
             # Open a GitHub Issue — you'll get an email notification
-            BODY=$(cat <<EOF
-## Sailing Spot Count Changed
-
-The number of available spots for **Sailing Level 1-A: Spring 2026 (4/18 - 5/3)** has changed.
-
-Previous: $PREV_SPOTS
-Current: $SPOTS
-
-[Register here]($URL)
-
----
-*Detected at $(date -u '+%Y-%m-%d %H:%M UTC')*
-EOF
-)
+            printf "## Sailing Spot Count Changed\n\nSpots for Sailing Level 1-A: Spring 2026 (4/18 - 5/3) changed.\n\nPrevious: %s\nCurrent: %s\n\nRegister: %s\n\n---\nDetected at %s" \
+              "$PREV_SPOTS" "$SPOTS" "$URL" "$(date -u '+%Y-%m-%d %H:%M UTC')" > /tmp/issue-body.txt
             gh issue create \
               --title "Sailing Level 1-A spots $DIRECTION: $PREV_SPOTS → $SPOTS" \
-              --body "$BODY"
+              --body-file /tmp/issue-body.txt
 
             # Persist the new count
             echo "$SPOTS" > "$SPOTS_FILE"
