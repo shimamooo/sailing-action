@@ -1,0 +1,91 @@
+name: Monitor Sailing Spots
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # Every 12 hours
+  workflow_dispatch:          # Allow manual runs for testing
+
+jobs:
+  check-spots:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch page and check spots
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SPOTS_FILE=".github/sailing-spots.txt"
+          URL="https://shop.rs.berkeley.edu/Program/GetProgramDetails?courseId=037a8c42-070b-42ff-b72b-d18c5100bb44"
+
+          # Fetch the page
+          RESPONSE=$(curl -s --max-time 30 "$URL")
+
+          if [ -z "$RESPONSE" ]; then
+            echo "ERROR: Empty response from server"
+            exit 1
+          fi
+
+          # Extract number from the spots-tag section: <p class="card-text">12 Spots Left</p>
+          SPOTS=$(echo "$RESPONSE" | grep -A5 'spots-tag' | grep -ioP '\d+(?= spots left)' | head -1)
+
+          if [ -z "$SPOTS" ]; then
+            echo "ERROR: Could not extract spots count from page. The page structure may have changed."
+            echo "--- Snippet around 'spots' for debugging ---"
+            echo "$RESPONSE" | grep -i 'spot' | head -10
+            exit 1
+          fi
+
+          echo "Current spots: $SPOTS"
+
+          # Read previously stored count (default to 12 — the initial capacity)
+          if [ -f "$SPOTS_FILE" ]; then
+            PREV_SPOTS=$(cat "$SPOTS_FILE")
+          else
+            PREV_SPOTS="12"
+          fi
+
+          echo "Previous spots: $PREV_SPOTS"
+
+          if [ "$SPOTS" != "$PREV_SPOTS" ]; then
+            echo "CHANGE DETECTED: $PREV_SPOTS → $SPOTS"
+
+            # Determine direction for the issue title
+            if [ "$SPOTS" -lt "$PREV_SPOTS" ]; then
+              DIRECTION="decreased"
+            else
+              DIRECTION="increased"
+            fi
+
+            # Open a GitHub Issue — you'll get an email notification
+            gh issue create \
+              --title "Sailing Level 1-A spots $DIRECTION: $PREV_SPOTS → $SPOTS" \
+              --body "## Sailing Spot Count Changed
+
+The number of available spots for **Sailing Level 1-A: Spring 2026 (4/18 - 5/3)** has changed.
+
+| | Count |
+|---|---|
+| Previous | $PREV_SPOTS |
+| Current | **$SPOTS** |
+
+[Register here]($URL)
+
+---
+*Detected at $(date -u '+%Y-%m-%d %H:%M UTC')*"
+
+            # Persist the new count
+            echo "$SPOTS" > "$SPOTS_FILE"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add "$SPOTS_FILE"
+            git commit -m "chore: update sailing spots count to $SPOTS"
+            git push
+          else
+            echo "No change — still $SPOTS spots."
+          fi
